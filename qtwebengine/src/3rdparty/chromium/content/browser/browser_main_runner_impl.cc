@@ -93,7 +93,6 @@ int BrowserMainRunnerImpl::Initialize(MainFunctionParams parameters) {
     notification_service_ = std::make_unique<NotificationServiceImpl>();
 
 #if BUILDFLAG(IS_WIN)
-    base::win::EnableHighDPISupport();
 #if !defined(TOOLKIT_QT)
     // Ole must be initialized before starting message pump, so that TSF
     // (Text Services Framework) module can interact with the message pump
