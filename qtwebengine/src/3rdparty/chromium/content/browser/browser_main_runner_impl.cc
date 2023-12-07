@@ -91,7 +91,6 @@ int BrowserMainRunnerImpl::Initialize(MainFunctionParams parameters) {
     }
 
 #if BUILDFLAG(IS_WIN)
-    base::win::EnableHighDPISupport();
 #if !defined(TOOLKIT_QT)
     // Ole must be initialized before starting message pump, so that TSF
     // (Text Services Framework) module can interact with the message pump
